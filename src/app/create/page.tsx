@@ -43,6 +43,7 @@ interface StoryResult {
 
 export default function CreatePage() {
   const [activeTab, setActiveTab] = useState<"create" | "illustrate">("create");
+  const [childName, setChildName] = useState("");
   const [imageStyle, setImageStyle] = useState("cartoon");
   const [textStyle, setTextStyle] = useState("short");
   const [storyType, setStoryType] = useState("storybook");
@@ -71,7 +72,7 @@ export default function CreatePage() {
   }, [characters]);
 
   const generateStory = async () => {
-    if (!storyText.trim()) return;
+    if (!childName.trim() || !storyText.trim()) return;
     setGenerating(true);
     setError(null);
     setGeneratingStep(0);
@@ -79,8 +80,6 @@ export default function CreatePage() {
     const interval = setInterval(() => setGeneratingStep((s) => Math.min(s + 1, 3)), 4000);
 
     try {
-      // Extract child name from story text (first capitalized word after common words)
-      const nameGuess = storyText.match(/\b([A-Z][a-z]+)\b/)?.[1] ?? "your child";
       const isArabic = language.toLowerCase().includes("arabic");
       const ageMap: Record<string, string> = { short: "0", medium: "1", long: "2" };
 
@@ -88,17 +87,18 @@ export default function CreatePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          childName: nameGuess,
+          childName: childName.trim(),
           ageGroup: ageMap[textStyle],
           storyIdea: storyText,
           language: isArabic ? "ar" : "en",
           imageStyle,
           characterPhoto: characters[0] ?? undefined,
+          pages: parseInt(pages, 10),
         }),
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed");
+      if (!res.ok) throw new Error(data.error ?? "Failed to generate story");
       setResult(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
@@ -130,7 +130,7 @@ export default function CreatePage() {
               ← Create Another
             </motion.button>
           </div>
-          <BookReader title={result.title} pages={result.pages} wisdom={result.wisdom} language={result.language} childName="" />
+          <BookReader title={result.title} pages={result.pages} wisdom={result.wisdom} language={result.language} childName={childName} />
         </div>
       </div>
     );
@@ -174,6 +174,26 @@ export default function CreatePage() {
           <p className="text-indigo-700/70 text-sm max-w-md mx-auto leading-relaxed">
             Gift your child a personalised story where they are the hero.
             A beautiful illustrated book — ready in 60 seconds.
+          </p>
+        </motion.div>
+
+        {/* CHILD NAME FIELD */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+          className="mb-8 bg-white/60 backdrop-blur-sm rounded-3xl p-6">
+          <label htmlFor="childName" className="text-lg font-black text-indigo-900 mb-2 block">
+            Child's Name <span className="text-amber-500">*</span>
+          </label>
+          <input
+            id="childName"
+            type="text"
+            value={childName}
+            onChange={(e) => setChildName(e.target.value)}
+            placeholder="Who is the hero of this story?"
+            className="w-full px-6 py-4 text-lg rounded-xl bg-white/80 text-indigo-900 placeholder:text-indigo-300 border-2 border-transparent outline-none focus:border-amber-400 focus:ring-4 focus:ring-amber-400/20 transition-all"
+            style={{ fontFamily: "Inter, sans-serif" }}
+          />
+          <p className="text-xs text-indigo-500 mt-2">
+            Enter your child's name — they'll be the star of the story ✨
           </p>
         </motion.div>
 
@@ -354,7 +374,7 @@ export default function CreatePage() {
             whileHover={{ scale: 1.02, boxShadow: "0 20px 40px rgba(74,63,160,0.4)" }}
             whileTap={{ scale: 0.98 }}
             onClick={generateStory}
-            disabled={!storyText.trim() || generating}
+            disabled={!childName.trim() || !storyText.trim() || generating}
             className="mt-6 w-full py-4 rounded-2xl font-black text-white text-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
             style={{ background: "linear-gradient(135deg, #4a3fa0, #6d28d9)", boxShadow: "0 10px 30px rgba(74,63,160,0.3)" }}
           >
