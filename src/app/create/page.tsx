@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { BookOpen, Plus, ChevronDown, Mic, Sparkles, Settings2 } from "lucide-react";
+import { BookOpen, Plus, ChevronDown, Settings2 } from "lucide-react";
 import BookReader from "@/components/BookReader";
 import Link from "next/link";
 
@@ -143,11 +143,6 @@ export default function CreatePage() {
         <Link href="/" className="flex items-center gap-2 text-indigo-900 font-bold text-xl" style={{ fontFamily: "Playfair Display, serif" }}>
           <span className="text-2xl">✨</span> StoryGift
         </Link>
-        <div className="flex items-center gap-3">
-          <motion.button whileHover={{ scale: 1.03 }} className="px-5 py-2 rounded-full text-sm font-bold text-white" style={{ background: "#4a3fa0" }}>
-            Log in
-          </motion.button>
-        </div>
       </nav>
 
       <div className="max-w-2xl mx-auto px-4 pt-4">
@@ -297,21 +292,9 @@ export default function CreatePage() {
               onChange={(e) => setStoryText(e.target.value)}
               placeholder="✨ Tell us about your child and the adventure they'll have! Include their name, something they love, or a lesson you want them to learn..."
               rows={5}
-              className="w-full p-5 pr-24 text-sm text-indigo-900 placeholder:text-indigo-300 bg-transparent resize-none outline-none leading-relaxed"
+              className="w-full p-5 text-sm text-indigo-900 placeholder:text-indigo-300 bg-transparent resize-none outline-none leading-relaxed"
               style={{ fontFamily: "Inter, sans-serif" }}
             />
-            <div className="absolute bottom-3 right-3 flex gap-2">
-              <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
-                className="w-9 h-9 rounded-full flex items-center justify-center text-white shadow-lg"
-                style={{ background: "linear-gradient(135deg, #a855f7, #6d28d9)" }}>
-                <Sparkles className="w-4 h-4" />
-              </motion.button>
-              <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
-                className="w-9 h-9 rounded-full flex items-center justify-center text-white shadow-lg"
-                style={{ background: "linear-gradient(135deg, #4a3fa0, #6d28d9)" }}>
-                <Mic className="w-4 h-4" />
-              </motion.button>
-            </div>
           </div>
 
           {/* ADDITIONAL SETTINGS */}
@@ -381,7 +364,7 @@ export default function CreatePage() {
             {generating ? (
               <>
                 <motion.div animate={{ rotate: 360 }} transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}>
-                  <Sparkles className="w-5 h-5" />
+                  <span className="text-xl">✨</span>
                 </motion.div>
                 {generatingMessages[generatingStep]}
               </>

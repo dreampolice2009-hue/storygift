@@ -16,8 +16,9 @@ function buildImagePrompt(scene: string, imageStyle: string, characterDesc: stri
 }
 
 // ─── STORY PROMPT ─────────────────────────────────────────────────────────────
-function buildStoryPrompt(childName: string, ageGroup: string, storyIdea: string, language: string): string {
+function buildStoryPrompt(childName: string, ageGroup: string, storyIdea: string, language: string, numPages: number): string {
   const wordCount = ageGroup === "0" ? "180-250" : ageGroup === "1" ? "350-500" : "600-800";
+  const wordsPerPage = Math.round(parseInt(wordCount) / numPages);
   const isArabic = language === "ar";
 
   return `You are a world-class children's book author — warm, imaginative, emotionally resonant.
@@ -26,7 +27,7 @@ Write a BEAUTIFUL personalised children's story:
 - Hero name: ${childName} (central hero throughout — brave, kind, curious)
 - Story idea: ${storyIdea}
 - Language: ${isArabic ? "Modern Standard Arabic, warm and poetic, beautifully written" : "English"}
-- Total word count: ${wordCount} words split across EXACTLY 5 pages (${Math.round(parseInt(wordCount) / 5)} words each)
+- Total word count: ${wordCount} words split across EXACTLY ${numPages} pages (${wordsPerPage} words each)
 
 RULES:
 1. ${childName} is the HERO — place them at the heart of every scene
@@ -39,29 +40,11 @@ RULES:
 FORMAT (follow EXACTLY):
 TITLE: [Captivating magical title with ${childName}]
 
-[PAGE 1]
-[Opening scene — 60-80 words — set the world, introduce ${childName}, hint at the adventure ahead]
+${Array.from({ length: numPages }, (_, i) => `[PAGE ${i + 1}]
+[Story text for page ${i + 1} — ${wordsPerPage} words]
+IMAGE: [Specific vivid scene description for this page's illustration — what to draw, colors, mood, character position, environment, action happening]`).join('\n\n')}
 
-[PAGE 2]
-[The problem appears — 60-80 words — tension builds, ${childName} faces a challenge]
-
-[PAGE 3]
-[The adventure — 60-80 words — ${childName} tries something brave or clever]
-
-[PAGE 4]
-[The climax — 60-80 words — the most exciting/emotional moment, ${childName}'s greatest test]
-
-[PAGE 5]
-[Resolution — 60-80 words — the happy ending, warmth, everything resolved beautifully]
-
-WISDOM: [One line — the lesson in a child's voice, poetic and memorable]
-
-SCENE_BRIEFS:
-COVER: [Vivid scene — ${childName} as hero, establishing the world, mood, specific colors, time of day]
-PAGE2: [The challenge/problem scene — specific action, emotion, setting details]
-PAGE3: [Adventure scene — movement, energy, specific environment details]
-PAGE4: [Climax scene — the most dramatic/emotional moment, character expression]
-PAGE5: [Resolution scene — warm, joyful, cozy — the perfect happy ending image]`;
+WISDOM: [One line — the lesson in a child's voice, poetic and memorable]`;
 }
 
 // ─── PARSE STORY ──────────────────────────────────────────────────────────────
@@ -72,21 +55,22 @@ function parseStory(text: string) {
   const wisdomMatch = text.match(/WISDOM:\s*(.+)/);
   const wisdom = wisdomMatch?.[1]?.trim() ?? "";
 
-  const pages: string[] = [];
-  const pageRegex = /\[PAGE \d+\]\s*([\s\S]*?)(?=\[PAGE \d+\]|WISDOM:|SCENE_BRIEFS:|$)/g;
+  const pages: Array<{ text: string; imageScene: string }> = [];
+  const pageRegex = /\[PAGE \d+\]\s*([\s\S]*?)(?=\[PAGE \d+\]|WISDOM:|$)/g;
+  
   for (const match of text.matchAll(pageRegex)) {
     const content = match[1].trim();
-    if (content) pages.push(content);
+    if (!content) continue;
+    
+    // Split content into story text and IMAGE description
+    const imageMatch = content.match(/IMAGE:\s*(.+?)$/m);
+    const imageScene = imageMatch?.[1]?.trim() ?? "";
+    const storyText = content.replace(/IMAGE:\s*.+$/m, "").trim();
+    
+    pages.push({ text: storyText, imageScene });
   }
 
-  const scenes: Record<string, string> = {};
-  const sceneRegex = /(COVER|PAGE\d+):\s*(.+)/g;
-  const briefSection = text.split("SCENE_BRIEFS:")?.[1] ?? "";
-  for (const match of briefSection.matchAll(sceneRegex)) {
-    scenes[match[1].toLowerCase()] = match[2].trim();
-  }
-
-  return { title, wisdom, pages, scenes };
+  return { title, wisdom, pages };
 }
 
 // ─── GENERATE IMAGE ───────────────────────────────────────────────────────────
@@ -148,39 +132,47 @@ export async function POST(req: NextRequest) {
       language = "en",
       imageStyle = "watercolor",
       characterPhoto, // base64 from frontend
+      pages = 5, // number of pages (default 5)
     } = await req.json();
 
     if (!childName || !storyIdea) {
       return NextResponse.json({ error: "Missing childName or storyIdea" }, { status: 400 });
     }
 
-    // 1) Generate story
+    const numPages = parseInt(String(pages), 10) || 5;
+
+    // 1) Generate story text with per-page IMAGE descriptions
     const textModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const storyResult = await textModel.generateContent(
-      buildStoryPrompt(childName, String(ageGroup), storyIdea, language)
+      buildStoryPrompt(childName, String(ageGroup), storyIdea, language, numPages)
     );
     const storyText = storyResult.response.text();
     const parsed = parseStory(storyText);
 
-    // Character description for prompt (from name + story context)
+    // Character description for image prompts
     const characterDesc = `a child named ${childName}, the story's hero`;
 
-    // 2) Generate 3 key illustrations in parallel (cover + page2 + page4)
-    const [coverImg, p2Img, p4Img] = await Promise.all([
-      generateImage(parsed.scenes["cover"] ?? `${childName} as a brave hero in a magical world`, imageStyle, characterDesc, characterPhoto),
-      generateImage(parsed.scenes["page2"] ?? `${childName} facing a challenge`, imageStyle, characterDesc, characterPhoto),
-      generateImage(parsed.scenes["page4"] ?? `${childName} at the most exciting moment`, imageStyle, characterDesc, characterPhoto),
-    ]);
+    // 2) Generate unique image for each page in parallel
+    const pageImages = await Promise.all(
+      parsed.pages.map((page) =>
+        generateImage(
+          page.imageScene || `${childName} in a magical scene`,
+          imageStyle,
+          characterDesc,
+          characterPhoto
+        )
+      )
+    );
 
-    // 3) Build book spreads
+    // 3) Build book pages: cover + story pages + wisdom
     const bookPages = [
-      { type: "cover", image: coverImg, title: parsed.title, text: "" },
-      { type: "story", image: coverImg,  text: parsed.pages[0] ?? "" },
-      { type: "story", image: p2Img,     text: parsed.pages[1] ?? "" },
-      { type: "story", image: p2Img,     text: parsed.pages[2] ?? "" },
-      { type: "story", image: p4Img,     text: parsed.pages[3] ?? "" },
-      { type: "story", image: p4Img,     text: parsed.pages[4] ?? "" },
-      { type: "wisdom", image: coverImg, text: parsed.wisdom },
+      { type: "cover", image: pageImages[0], title: parsed.title, text: "" },
+      ...parsed.pages.map((page, i) => ({
+        type: "story",
+        image: pageImages[i],
+        text: page.text,
+      })),
+      { type: "wisdom", image: pageImages[0], text: parsed.wisdom },
     ];
 
     return NextResponse.json({
